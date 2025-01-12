@@ -360,20 +360,16 @@ class T5UIC1_LCD:
             inum
         )
 
-    # Draw JPG and cached in #0 virtual display area
-    # id: Picture ID
-    def draw_jpeg(self, id):
+    def draw_jpeg(self, id:int):
         """
         Display a fullscreen JPEG from "picture memory".
+        
+        IDs > 2 seem to start drawing icons.
 
         Requires :meth:`commit`.
         """
         self._send(Commands.DRAW_JPEG, 'BB', 0, id)
 
-    #  Draw an Icon
-    #   libID: Icon library ID
-    #   picID: Icon ID
-    #   x/y: Upper-left point
     def draw_icon(self, pos:tuple[int,int], lib_id:int, icon_id:int):
         """
         Draw an icon. Requires :meth:`commit`.
