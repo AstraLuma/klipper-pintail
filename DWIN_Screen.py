@@ -1,513 +1,515 @@
+"""
+https://github.com/ihrapsa/T5UIC1-DWIN-toolset/
+"""
+import enum
+import functools
 import time
 import math
+import re
 import serial
 import struct
+from typing import overload, Union
 
+@overload
+def RGB(hex: int) -> int: ...
+
+@overload
+def RGB(r: int, g: int, b: int) -> int: ...
+
+@functools.cache
+def RGB(*args):
+    """
+    Convert an RGB into the 16-bit format the screen likes.
+    """
+    if len(args) == 1:
+        r, g, b = int(args[0]).to_bytes(length=3, byteorder='big', signed=False)
+    else:
+        r, g, b = args
+
+    r = (r >> 3) & 0b11111
+    g = (g >> 2) & 0b111111
+    b = (b >> 3) & 0b11111
+    return (r << 10) | (g << 5) | b
+
+
+class Commands(enum.IntEnum):
+    #: ping/pong
+    HANDSHAKE = 0x00
+    BACKLIGHT_BRIGHTNESS_ADJUSTMENT = 0x30
+    #: Added in 2.0
+    WRITE_DATA_MEMORY = 0x31
+    #: Added in 2.0
+    READ_DATA_MEMORY = 0x32
+    #: Added in 2.0
+    WRITE_PICTURE_MEMORY = 0x33
+    SET_ROTATION = 0x34
+
+    EXPANSION_SERIAL_PORT_CONFIG = 0x38
+    EXPANSION_SERIAL_PORT_SEND = 0x39
+    EXPANSION_SERIAL_PORT_RECV= 0x3A
+
+    CLEAR_SCREEN = 0x01
+    DRAW_POINT = 0x02
+    DRAW_LINE = 0x03
+    DRAW_RECT = 0x05
+    MOVE_REGION = 0x09
+    DRAW_TEXT = 0x11
+    DRAW_NUMBER = 0x14
+    DRAW_QR_CODE = 0x21
+    DRAW_JPEG = 0x22
+    DRAW_ICON = 0x23
+    DRAW_FROM_SRAM = 0x24
+    DRAW_JPEG_BUFFER = 0x25
+    DRAW_BUFFER = 0x26
+    DRAW_BUFFER2 = 0x27
+    DRAW_ICON_ANIM = 0x28
+    SET_ANIM = 0x29
+
+
+
+class RectMode(enum.IntEnum):
+    OUTLINE = 0
+    FILLED = 1
+    XOR = 2
+
+_font_dimensions = {
+    0: (6,12),
+    1: (8,16),
+    2: (10,20),
+    3: (12,24),
+    4: (14,28),
+    5: (16,32),
+    6: (20,40),
+    7: (24,48),
+    8: (28,56),
+    9: (32,64),
+}
+
+_font_lookup = {v:k for k,v in _font_dimensions.items()}
+
+class Font(enum.IntEnum):
+    # 6x12 doesn't seem to do anything
+    SIX_X_TWELVE = 0
+    EIGHT_X_SIXTEEN = 1
+    TEN_X_TWENTY = 2
+    TWELVE_X_TWENTYFOUR = 3
+    FOURTEEN_X_TWENTYEIGHT = 4
+    SIXTEEN_X_THIRTYTWO = 5
+    # 20x40 and larger don't seem to do anything
+    TWENTY_X_FOURTY = 6
+    TWENTYFOUR_X_FOURTYEIGHT = 7
+    TWENTYEIGHT_X_FIFTYSIX = 8
+    THIRTYTWO_X_SIXTYFOUR = 9
+
+    @property
+    def x(self):
+        x,y = _font_dimensions[int(self)]
+        return x
+
+    @property
+    def y(self):
+        x,y = _font_dimensions[int(self)]
+        return y
+
+    @classmethod
+    def s(cls, x, y):
+        """
+        Get font by dimensions
+        """
+        return cls(_font_lookup[x, y])
 
 class T5UIC1_LCD:
-	address = 0x2A
-	DWIN_BufTail = [0xCC, 0x33, 0xC3, 0x3C]
-	DWIN_SendBuf = []
-	databuf = [None] * 26
-	recnum = 0
+    PACKET_HEAD = b"\xAA"
+    PACKET_TAIL = b"\xCC\x33\xC3\x3C"
 
-	RECEIVED_NO_DATA = 0x00
-	RECEIVED_SHAKE_HAND_ACK = 0x01
+    width = 272
+    height = 480
 
-	FHONE = b'\xAA'
+    RectMode = RectMode
+    Font = Font
+    RGB = staticmethod(RGB)
 
-	DWIN_WIDTH = 272
-	DWIN_HEIGHT = 480
+    def __init__(self, usart: str):
+        """
+        Args:
+            usart: serial port to connect to
+        """
+        self.port = serial.Serial(usart, 115200, timeout=1)
+        print("\nDWIN handshake ")
+        while not self.handshake():
+            pass
+        print("DWIN OK.")
+        # self.JPG_ShowAndCache(0)
+        self.set_direction(1)
+        self.commit()
 
-	# 3-.0：The font size, 0x00-0x09, corresponds to the font size below:
-	# 0x00=6*12   0x01=8*16   0x02=10*20  0x03=12*24  0x04=14*28
-	# 0x05=16*32  0x06=20*40  0x07=24*48  0x08=28*56  0x09=32*64
+    def _send(self, cmd: int, fmt:str, *fields, flush: bool=True):
+        """
+        Send a command
 
-	font6x12 = 0x00
-	font8x16 = 0x01
-	font10x20 = 0x02
-	font12x24 = 0x03
-	font14x28 = 0x04
-	font16x32 = 0x05
-	font20x40 = 0x06
-	font24x48 = 0x07
-	font28x56 = 0x08
-	font32x64 = 0x09
+        Args:
+            cmd: the instruction byte
+            fmt: the format for the rest of the data (in struct form)
+            fields: arguments to pack into the data
+        """
+        buff = bytearray(self.PACKET_HEAD)
+        buff += struct.pack('>B'+fmt, cmd, *fields)
+        # Optional CRC32 goes here, if firmware >=v2.3
+        buff += self.PACKET_TAIL
+        self.port.write(buff)
+        # This was in the original implementation; not sure why
+        #time.sleep(0.001)
+        if flush:
+            self.port.flush()
 
-	# Color
-	Color_White = 0xFFFF
-	Color_Yellow = 0xFF0F
-	Color_Bg_Window = 0x31E8  # Popup background color
-	Color_Bg_Blue = 0x1125  # Dark blue background color
-	Color_Bg_Black = 0x0841  # Black background color
-	Color_Bg_Red = 0xF00F  # Red background color
-	Popup_Text_Color = 0xD6BA  # Popup font background color
-	Line_Color = 0x3A6A  # Split line color
-	Rectangle_Color = 0xEE2F  # Blue square cursor color
-	Percent_Color = 0xFE29  # Percentage color
-	BarFill_Color = 0x10E4  # Fill color of progress bar
-	Select_Color = 0x33BB  # Selected color
+    def _read_one(self) -> tuple[int, bytes]:
+        """
+        Read a single packet from the serial port
+        """
+        packet = self.port.read_until(self.PACKET_TAIL)
+        assert packet.startswith(self.PACKET_HEAD)
+        packet = packet.removeprefix(self.PACKET_HEAD).removesuffix(self.PACKET_TAIL)
+        return packet[0], packet[1:]
 
-	DWIN_FONT_MENU = font8x16
-	DWIN_FONT_STAT = font10x20
-	DWIN_FONT_HEAD = font10x20
+    def handshake(self):
+        """
+        Send an noop and wait for an acknowledgement
+        """
+        self._send(Commands.HANDSHAKE, '')
+        recv_cmd, recv_data = self._read_one()
+        return recv_cmd == 0x00 and recv_data == b"OK"
 
-	# Dwen serial screen initialization
-	# Passing parameters: serial port number
-	# DWIN screen uses serial port 1 to send
-	def __init__(self, USARTx):
-		self.MYSERIAL1 = serial.Serial(USARTx, 115200, timeout=1)
-		# self.bus = SMBus(1)
-		# self.DWIN_SendBuf = self.FHONE
-		print("\nDWIN handshake ")
-		while not self.Handshake():
-			pass
-		print("DWIN OK.")
-		self.JPG_ShowAndCache(0)
-		self.Frame_SetDir(1)
-		self.UpdateLCD()
+    # Can't confirm
+    def set_brightness(self, value: int):
+        """
+        Set the brightness of the backlight
 
-	def Byte(self, bval):
-		self.DWIN_SendBuf += int(bval).to_bytes(1, byteorder='big')
+        Args:
+            value: 0-0xFF, 0 is off, values <0x20 may cause flicker
+        """
+        self._send(Commands.BACKLIGHT_BRIGHTNESS_ADJUSTMENT, "B", value)
 
-	def Word(self, wval):
-		self.DWIN_SendBuf += int(wval).to_bytes(2, byteorder='big')
+    def set_direction(self, dir:int):
+        """
+        Set screen display direction
 
-	def Long(self, lval):
-		self.DWIN_SendBuf += int(lval).to_bytes(4, byteorder='big')
+        Added in 2.0
 
-	def D64(self, value):
-		self.DWIN_SendBuf += int(value).to_bytes(8, byteorder='big')
+        Args:
+            dir: 0=0°, 1=90°, 2=180°, 3=270°
+        """
+        # TODO: What are these magic numbers?
+        self._send(Commands.SET_ROTATION, 'BBBB', 0x34, 0x5A, 0xA5, dir)
 
-	def String(self, string):
-		self.DWIN_SendBuf += string.encode('utf-8')
+    def commit(self):
+        """
+        Update display.
 
-	# Send the data in the buffer and the packet end
-	def Send(self):
-		# for i in self.DWIN_BufTail:
-		# 	self.Byte(i)
-		# self.bus.write_i2c_block_data(self.address, 0, self.DWIN_SendBuf)
-		# self.bus.write_i2c_block_data(self.address, 0, self.DWIN_BufTail)
+        Must be called after all draw operations and most config changes.
+        """
+        self._send(0x3D, '')
 
-		self.MYSERIAL1.write(self.DWIN_SendBuf)
-		self.MYSERIAL1.write(self.DWIN_BufTail)
+    def clear_screen(self, color: int):
+        """
+        Clear screen. Requires :meth:`commit`.
 
-		self.DWIN_SendBuf = self.FHONE
-		time.sleep(0.001)
+        Args:
+            color: Use :func:`RGB`
+        """
+        self._send(Commands.CLEAR_SCREEN, 'H', color)
 
-	def Read(self, lend=1):
-		bit = self.bus.read_i2c_block_data(self.address, 0, lend)
-		if lend == 1:
-			return bytes(bit)
-		return bit
+    def draw_points(self, color: int, *pos: tuple[int, int], size: tuple[int, int]=(0x01, 0x01)):
+        """
+        Draw points. Requires :meth:`commit`.
 
-	# /*-------------------------------------- System variable function --------------------------------------*/
+        FIXME: Not working.
 
-	# Handshake (1: Success, 0: Fail)
-	def Handshake(self):
-		i = 0
-		self.Byte(0x00)
-		self.Send()
-		time.sleep(0.1)
-		# while (self.recnum < 26):
-		while (self.MYSERIAL1.in_waiting and self.recnum < 26):
-			# self.databuf[self.recnum] = struct.unpack('B', self.Read())[0]
-			self.databuf[self.recnum] = struct.unpack('B', self.MYSERIAL1.read())[0]
+        Args:
+            color: Use :func:`RGB`
+            pos: Position (x,y) of each point to draw
+            size: width,height, each 0x01-0x0F
+        """
+        self._send(Commands.DRAW_POINT, 'H2B' + '2H'*len(pos), color, *size, *(c for p in pos for c in p))
 
-			# ignore the invalid data
-			if self.databuf[0] != 0xAA:  # prevent the program from running.
-				if(self.recnum > 0):
-					self.recnum = 0
-					self.databuf = [None] * 26
-				continue
-			time.sleep(.010)
-			self.recnum += 1
-		return (self.recnum >= 3 and self.databuf[0] == 0xAA and self.databuf[1] == 0 and chr(self.databuf[2]) == 'O' and chr(self.databuf[3]) == 'K')
+    def draw_line(self, color: int, start: tuple[int, int], end: tuple[int, int]):
+        """
+        Draw a line. Requires :meth:`commit`.
 
-	# Set the backlight luminance
-	#  luminance: (0x00-0xFF)
-	def Backlight_SetLuminance(self, luminance):
-		self.Byte(0x30)
-		self.Byte(_MAX(luminance, 0x1F))
-		self.Send()
+        Args:
+            color: Use :func:`RGB`
+            start: x,y of starting point
+            end: x,y of ending point
+        """
+        self._send(Commands.DRAW_LINE, 'H2H2H', color, *start, *end)
 
-	# Set screen display direction
-	#  dir: 0=0°, 1=90°, 2=180°, 3=270°
-	def Frame_SetDir(self, dir):
-		self.Byte(0x34)
-		self.Byte(0x5A)
-		self.Byte(0xA5)
-		self.Byte(dir)
-		self.Send()
+    def draw_rect(self, mode:RectMode, color: int, start: tuple[int, int], end: tuple[int, int]):
+        """
+        Draw a rectangle. Requires :meth:`commit`.
+        
+        FIXME: XOR mode doesn't work
 
-	# Update display
-	def UpdateLCD(self):
-		self.Byte(0x3D)
-		self.Send()
+        Args:
+            mode: 0=outline, 1=filled, 2=XOR fill
+            color: Use :func:`RGB`
+            start: x,y of starting point
+            end: x,y of ending point    
+        """
+        self._send(Commands.DRAW_RECT, 'BH2H2H', mode, color, *start, *end)        
 
-	# /*---------------------------------------- Drawing functions ----------------------------------------*/
+    # Can't confirm
+    def move_area(self, mode:int, dir:int, distance:int, color:int, start:tuple[int,int], end:tuple[int,int]):
+        """
+        Move a portion of the screen.
 
-	# Clear screen
-	#  color: Clear screen color
-	def Frame_Clear(self, color):
-		self.Byte(0x01)
-		self.Word(color)
-		self.Send()
+        FIXME: Not working.
 
-	# Draw a point
-	#  width: point width   0x01-0x0F
-	#  height: point height 0x01-0x0F
-	#  x,y: upper left point
-	def Draw_Point(self, width, height, x, y):
-		self.Byte(0x02)
-		self.Byte(width)
-		self.Byte(height)
-		self.Word(x)
-		self.Word(y)
-		self.Send()
+        Args:
+            mode: 0="cycle movement", 1=translate & fill
+            dir: 0=left, 1=right, 2=up, 3=down
+            distance: number of pixels to move in that direction
+            color: filling color when mode=1
+            start: x,y of one corner of rectangle
+            end: x,y of the other corner
+        """
+        self._send(Commands.MOVE_REGION, 'BHH2H2H', (mode << 7) | dir, distance, color, *start, *end)
 
-	# ___________________________________Draw points ____________________________________________\\
-	# Command: frame header + command + color of drawing point + pixel size of drawing point (Nx, Ny) + position of drawing point [(X1,Y1)+(X2,Y2)+.........]+ End of frame
-	# Set point; processing time=0.4*Nx*Ny*number of set points uS.
-	# Color: Set point color.
-	# Nx: Actual pixel size in X direction, 0x01-0x0F.
-	# Ny: Actual pixel size in Y direction, 0x01-0x0F.
-	# (Xn, Yn): Set point coordinate sequence.
-	# Example: AA 02 F8 00 04 04 00 08 00 08 CC 33 C3 3C
-	# /**************Drawing point protocol command can draw multiple points at a time (this function only draws pixels in one position) ********** *****/
-	def DrawPoint(self, Color, Nx, Ny, X1, Y1):			  # Draw some
-		self.Byte(0x02)
-		self.Word(Color)
-		self.Byte(int(Nx))
-		self.Byte(int(Ny))
-		self.Word(int(X1))
-		self.Word(int(Y1))
-		self.Send()
+    def draw_text(self, pos:tuple[int,int], font:Font, text:str, *, fg_color:int, bg_color: Union[int,None], monospace:bool):
+        """
+        Draw text from a built-in font.
 
-	#  Draw a line
-	#   color: Line segment color
-	#   xStart/yStart: Start point
-	#   xEnd/yEnd: End point
-	def Draw_Line(self, color, xStart, yStart, xEnd, yEnd):
-		self.Byte(0x03)
-		self.Word(color)
-		self.Word(xStart)
-		self.Word(yStart)
-		self.Word(xEnd)
-		self.Word(yEnd)
-		self.Send()
+        Does not require :meth:`commit`.
 
-	#  Draw a rectangle
-	#   mode: 0=frame, 1=fill, 2=XOR fill
-	#   color: Rectangle color
-	#   xStart/yStart: upper left point
-	#   xEnd/yEnd: lower right point
-	def Draw_Rectangle(self, mode, color, xStart, yStart, xEnd, yEnd):
-		self.Byte(0x05)
-		self.Byte(mode)
-		self.Word(color)
-		self.Word(xStart)
-		self.Word(yStart)
-		self.Word(xEnd)
-		self.Word(yEnd)
-		self.Send()
+        Args:
+            pos: x,y of upper-left corner
+            size: size, 0-9
+            text: Text to render
+            fg_color: Color of the text (see :func:`RGB`)
+            bg_color: Color of the background, or None if transparent (see :func:`RGB`)
+            monospace: True if monospace, False if proportional
+        """
+        btext = text.encode('utf-8')
+        self._send(
+            Commands.DRAW_TEXT, f'BHH2H{len(btext)}s', 
+            (monospace << 7) | ((bg_color is not None) << 6) | (font & 0b1111),
+            fg_color,
+            bg_color or 0,
+            *pos,
+            btext,
+        )
 
-	#  Move a screen area
-	#   mode: 0, circle shift; 1, translation
-	#   dir: 0=left, 1=right, 2=up, 3=down
-	#   dis: Distance
-	#   color: Fill color
-	#   xStart/yStart: upper left point
-	#   xEnd/yEnd: bottom right point
-	def Frame_AreaMove(self, mode, dir, dis, color, xStart, yStart, xEnd, yEnd):
-		self.Byte(0x09)
-		self.Byte((mode << 7) | dir)
-		self.Word(dis)
-		self.Word(color)
-		self.Word(xStart)
-		self.Word(yStart)
-		self.Word(xEnd)
-		self.Word(yEnd)
-		self.Send()
+    __number_format = re.compile(r"^(?P<prefix>[+])?(?P<fill>[ 0])?(?P<digits>\d+)(?:\.(?P<precision>\d+))?$")
 
-	# ____________________________Draw a circle________________________________\\
-	# Color: circle color
-	# x0: the abscissa of the center of the circle
-	# y0: ordinate of the center of the circle
-	# r: circle radius
-	def Draw_Circle(self, Color, x0, y0, r):  # Draw a circle
-		b = 0
-		a = 0
-		while(a <= b):
-			b = math.sqrt(r * r - a * a)
-			while(a == 0):
-				b = b - 1
-				break
-			self.DrawPoint(Color, 1, 1, x0 + a, y0 + b)		               # Draw some sector 1
-			self.DrawPoint(Color, 1, 1, x0 + b, y0 + a)		               # Draw some sector 2
-			self.DrawPoint(Color, 1, 1, x0 + b, y0 - a)		               # Draw some sector 3
-			self.DrawPoint(Color, 1, 1, x0 + a, y0 - b)		               # Draw some sector 4
+    def draw_number(self, pos:tuple[int,int], font:Font, fmt:str, value:Union[int,float], *, fg_color:int, bg_color:Union[int,None]):
+        """
+        Draw a number.
 
-			self.DrawPoint(Color, 1, 1, x0 - a, y0 - b)		              # Draw some sector 5
-			self.DrawPoint(Color, 1, 1, x0 - b, y0 - a)		              # Draw some sector 6
-			self.DrawPoint(Color, 1, 1, x0 - b, y0 + a)		              # Draw some sector 7
-			self.DrawPoint(Color, 1, 1, x0 - a, y0 + b)		              # Draw some sector 8
-			a += 1
+        Does not require :meth:`commit`.
 
-	# ____________________________Circular Filling________________________________\\
-	# FColor: circle fill color
-	# x0: the abscissa of the center of the circle
-	# y0: ordinate of the center of the circle
-	# r: circle radius
-	def CircleFill(self, FColor, x0, y0, r):  # Round filling
-		b = 0
-		for i in range(r, 0, -1):
-			a = 0
-			while(a <= b):
-				b = math.sqrt(i * i - a * a)
-				while(a == 0):
-					b = b - 1
-					break
-				self.DrawPoint(FColor, 2, 2, x0 + a, y0 + b)  # Draw some sector 1
-				self.DrawPoint(FColor, 2, 2, x0 + b, y0 + a)  # raw some sector 2
-				self.DrawPoint(FColor, 2, 2, x0 + b, y0 - a)  # Draw some sector 3
-				self.DrawPoint(FColor, 2, 2, x0 + a, y0 - b)  # Draw some sector 4
+        Args:
+            pos: x,y of upper-left
+            font: size of text
+            fmt: Format of number, in printf-ish ("+04.2", " 4.2", etc)
+            value: Number to render
+            fg_color: Color of the text (see :func:`RGB`)
+            bg_color: Color of the background, or None if transparent (see :func:`RGB`)
 
-				self.DrawPoint(FColor, 2, 2, x0 - a, y0 - b)  # Draw some sector 5
-				self.DrawPoint(FColor, 2, 2, x0 - b, y0 - a)  # Draw some sector 6
-				self.DrawPoint(FColor, 2, 2, x0 - b, y0 + a)  # Draw some sector 7
-				self.DrawPoint(FColor, 2, 2, x0 - a, y0 + b)  # Draw some sector 8
-				a = a + 2
+        fmt is as follows:
+        
+        * ``+`` or omitted, to indicate if the sign should be included
+        * `` `` or ``0`` or omitted, to indicate how to pad
+        * a number, indicating the number of digits to the left of the decimal point to render
+        * optionally, ``.`` and a number, indicating the number of fractional digits
 
-	# /*---------------------------------------- Text related functions ----------------------------------------*/
+        Note: ``+`` does not seem to do anything. `` `` seems to be treated as ``0``.
+        """
+        fmtmatch = self.__number_format.match(fmt)
+        assert fmtmatch is not None
+        fparams = fmtmatch.groupdict()
 
-	#  Draw a string
-	#   widthAdjust: True=self-adjust character width; False=no adjustment
-	#   bShow: True=display background color; False=don't display background color
-	#   size: Font size
-	#   color: Character color
-	#   bColor: Background color
-	#   x/y: Upper-left coordinate of the string
-	#   *string: The string
-	def Draw_String(self, widthAdjust, bShow, size, color, bColor, x, y, string):
-		self.Byte(0x11)
-		# Bit 7: widthAdjust
-		# Bit 6: bShow
-		# Bit 5-4: Unused (0)
-		# Bit 3-0: size
-		self.Byte((widthAdjust * 0x80) | (bShow * 0x40) | size)
-		self.Word(color)
-		self.Word(bColor)
-		self.Word(x)
-		self.Word(y)
-		self.String(string)
-		self.Send()
+        if fparams['prefix'] == None:
+            signed = False
+        elif fparams['prefix'] == '+':
+            signed = True
+        else:
+            raise ValueError
 
-	#  Draw a positive integer
-	#   bShow: True=display background color; False=don't display background color
-	#   zeroFill: True=zero fill; False=no zero fill
-	#   zeroMode: 1=leading 0 displayed as 0; 0=leading 0 displayed as a space
-	#   size: Font size
-	#   color: Character color
-	#   bColor: Background color
-	#   iNum: Number of digits
-	#   x/y: Upper-left coordinate
-	#   value: Integer value
-	def Draw_IntValue(self, bShow, zeroFill, zeroMode, size, color, bColor, iNum, x, y, value):
-		self.Byte(0x14)
-		# Bit 7: bshow
-		# Bit 6: 1 = signed; 0 = unsigned number;
-		# Bit 5: zeroFill
-		# Bit 4: zeroMode
-		# Bit 3-0: size
-		self.Byte((bShow * 0x80) | (zeroFill * 0x20) | (zeroMode * 0x10) | size)
-		self.Word(color)
-		self.Word(bColor)
-		self.Byte(iNum)
-		self.Byte(0)  # fNum
-		self.Word(x)
-		self.Word(y)
-		self.D64(value)
-		self.Send()
+        if fparams['fill'] == None:
+            dofill = False
+            fillmode = 0
+        elif fparams['fill'] == '0':
+            dofill = True
+            fillmode = 1
+        elif fparams['fill'] == ' ':
+            dofill = True
+            fillmode = 0
+        else:
+            raise ValueError
 
-	#  Draw a floating point number
-	#   bShow: True=display background color; False=don't display background color
-	#   zeroFill: True=zero fill; False=no zero fill
-	#   zeroMode: 1=leading 0 displayed as 0; 0=leading 0 displayed as a space
-	#   size: Font size
-	#   color: Character color
-	#   bColor: Background color
-	#   iNum: Number of whole digits
-	#   fNum: Number of decimal digits
-	#   x/y: Upper-left point
-	#   value: Float value
-	def Draw_FloatValue(self, bShow, zeroFill, zeroMode, size, color, bColor, iNum, fNum, x, y, value):
-		self.Byte(0x14)
-		self.Byte((bShow * 0x80) | (zeroFill * 0x20) | (zeroMode * 0x10) | size)
-		self.Word(color)
-		self.Word(bColor)
-		self.Byte(iNum)
-		self.Byte(fNum)
-		self.Word(x)
-		self.Word(y)
-		self.Long(value)
-		self.Send()
+        wholedigits, trailingdigits = int(fparams['digits'] or 1), int(fparams['precision'] or 0)
 
-	def Draw_Signed_Float(self, size, bColor, iNum, fNum, x, y, value):
-		if value < 0:
-			self.Draw_String(False, True, size, self.Color_White, bColor, x - 6, y, "-")
-			self.Draw_FloatValue(True, True, 0, size, self.Color_White, bColor, iNum, fNum, x, y, -value)
-		else:
-			self.Draw_String(False, True, size, self.Color_White, bColor, x - 6, y, " ")
-			self.Draw_FloatValue(True, True, 0, size, self.Color_White, bColor, iNum, fNum, x, y, value)
+        inum = round(value * 10 ** trailingdigits)
 
-	# /*---------------------------------------- Picture related functions ----------------------------------------*/
+        self._send(
+            Commands.DRAW_NUMBER, "BHHBB2Hq",
+            (bool(bg_color is not None) << 7) | (signed << 6) | (dofill << 5) | (fillmode << 4) | (int(font) & 0b1111),
+            fg_color,
+            bg_color or 0,
+            wholedigits,
+            trailingdigits,
+            *pos,
+            inum
+        )
 
-	# Draw JPG and cached in #0 virtual display area
-	# id: Picture ID
-	def JPG_ShowAndCache(self, id):
-		self.Word(0x2200)
-		self.Byte(id)
-		self.Send()  # AA 23 00 00 00 00 08 00 01 02 03 CC 33 C3 3C
+    # Draw JPG and cached in #0 virtual display area
+    # id: Picture ID
+    def draw_jpeg(self, id):
+        """
+        Display a fullscreen JPEG from "picture memory".
 
-	#  Draw an Icon
-	#   libID: Icon library ID
-	#   picID: Icon ID
-	#   x/y: Upper-left point
-	def ICON_Show(self, libID, picID, x, y):
-		if x > self.DWIN_WIDTH - 1:
-			x = self.DWIN_WIDTH - 1
-		if y > self.DWIN_HEIGHT - 1:
-			y = self.DWIN_HEIGHT - 1
-		self.Byte(0x23)
-		self.Word(x)
-		self.Word(y)
-		self.Byte(0x80 | libID)
-		self.Byte(picID)
-		self.Send()
+        Requires :meth:`commit`.
+        """
+        self._send(Commands.DRAW_JPEG, 'BB', 0, id)
 
-	# Unzip the JPG picture to a virtual display area
-	#  n: Cache index
-	#  id: Picture ID
-	def JPG_CacheToN(self, n, id):
-		self.Byte(0x25)
-		self.Byte(n)
-		self.Byte(id)
-		self.Send()
+    #  Draw an Icon
+    #   libID: Icon library ID
+    #   picID: Icon ID
+    #   x/y: Upper-left point
+    def draw_icon(self, pos:tuple[int,int], lib_id:int, icon_id:int):
+        """
+        Draw an icon. Requires :meth:`commit`.
+        
+        Added in 2.0.
 
-	def JPG_CacheTo1(self, id):
-		self.JPG_CacheToN(1, id)
+        Args: 
+            lib_id: The libray to pull from
+            icon_id: The icon from that library to draw
+            pos: x,y
 
-	#  Copy area from virtual display area to current screen
-	#   cacheID: virtual area number
-	#   xStart/yStart: Upper-left of virtual area
-	#   xEnd/yEnd: Lower-right of virtual area
-	#   x/y: Screen paste point
-	def Frame_AreaCopy(self, cacheID, xStart, yStart, xEnd, yEnd, x, y):
-		self.Byte(0x27)
-		self.Byte(0x80 | cacheID)
-		self.Word(xStart)
-		self.Word(yStart)
-		self.Word(xEnd)
-		self.Word(yEnd)
-		self.Word(x)
-		self.Word(y)
-		self.Send()
+        TODO: Implement background modes
 
-	def Frame_TitleCopy(self, id, x1, y1, x2, y2):
-		self.Frame_AreaCopy(id, x1, y1, x2, y2, 14, 8)
+        NOTE: Only library 9 seems to be present 
+        """
+        self._send(Commands.DRAW_ICON, '2HBB', *pos, 0x80 | lib_id, icon_id)
 
-	#  Animate a series of icons
-	#   animID: Animation ID; 0x00-0x0F
-	#   animate: True on; False off;
-	#   libID: Icon library ID
-	#   picIDs: Icon starting ID
-	#   picIDe: Icon ending ID
-	#   x/y: Upper-left point
-	#   interval: Display time interval, unit 10mS
-	def ICON_Animation(self, animID, animate, libID, picIDs, picIDe, x, y, interval):
-		if x > self.DWIN_WIDTH - 1:
-			x = self.DWIN_WIDTH - 1
-		if y > self.DWIN_HEIGHT - 1:
-			y = self.DWIN_HEIGHT - 1
-		self.Byte(0x28)
-		self.Word(x)
-		self.Word(y)
-		# Bit 7: animation on or off
-		# Bit 6: start from begin or end
-		# Bit 5-4: unused (0)
-		# Bit 3-0: animID
-		self.Byte((animate * 0x80) | 0x40 | animID)
-		self.Byte(libID)
-		self.Byte(picIDs)
-		self.Byte(picIDe)
-		self.Byte(interval)
-		self.Send()
+    def draw_qr(self, pos:tuple[int,int], size:int, data:bytes):
+        """
+        Draw a QR code. Requires :meth:`commit`.
 
-	#  Animation Control
-	#   state: 16 bits, each bit is the state of an animation id
-	def ICON_AnimationControl(self, state):
-		self.Byte(0x28)
-		self.Word(state)
-		self.Send()
+        Args:
+            pos: x,y of upper left
+            size: pixels per cell, suggest no more than 6
+            data: contents of QR code
+        """
+        assert 0x1 <= size <= 0xF
+        assert len(data) <= 154
+        self._send(Commands.DRAW_QR_CODE, f"2HB{len(data)}s", *pos, size, data)
 
-	# ____________________________Display QR code ________________________________\\
-	# QR_Pixel: The pixel size occupied by each point of the QR code: 0x01-0x0F (1-16)
-	# (Nx, Ny): The coordinates of the upper left corner displayed by the QR code
-	# str: multi-bit data
-	# /**************The size of the QR code is (46*QR_Pixel)*(46*QR_Pixle) dot matrix************/
-	def QR_Code(self, QR_Pixel, Xs, Ys, data):	    # Display QR code
-		self.Byte(0x21)  # Display QR code instruction
-		self.Word(Xs)  # Two-dimensional code Xs coordinate high eight
-		self.Word(Ys)  # The Ys coordinate of the QR code is eight high
 
-		if(QR_Pixel <= 6):  # Set the upper limit of pixels according to the actual screen size
-			self.Byte(QR_Pixel)  # Two-dimensional code pixel size
-		else:
-			self.Byte(0x06)  # The pixel size of the QR code exceeds the default of 1
-		self.String(data)
-		self.Send()
-	# /*---------------------------------------- Memory functions ----------------------------------------*/
-	#  The LCD has an additional 32KB SRAM and 16KB Flash
+    # Astra: I don't feel like dealing with framebuffer stuff yet
 
-	#  Data can be written to the sram and save to one of the jpeg page files
+    # # Unzip the JPG picture to a virtual display area
+    # #  n: Cache index
+    # #  id: Picture ID
+    # def JPG_CacheToN(self, n, id):
+    #     self.Byte(0x25)
+    #     self.Byte(n)
+    #     self.Byte(id)
+    #     self.Send()
 
-	#  Write Data Memory
-	#   command 0x31
-	#   Type: Write memory selection; 0x5A=SRAM; 0xA5=Flash
-	#   Address: Write data memory address; 0x000-0x7FFF for SRAM; 0x000-0x3FFF for Flash
-	#   Data: data
-	#
-	#   Flash writing returns 0xA5 0x4F 0x4B
+    # def JPG_CacheTo1(self, id):
+    #     self.JPG_CacheToN(1, id)
 
-	#  Read Data Memory
-	#   command 0x32
-	#   Type: Read memory selection; 0x5A=SRAM; 0xA5=Flash
-	#   Address: Read data memory address; 0x000-0x7FFF for SRAM; 0x000-0x3FFF for Flash
-	#   Length: leangth of data to read; 0x01-0xF0
-	#
-	#   Response:
-	#     Type, Address, Length, Data
+    # #  Copy area from virtual display area to current screen
+    # #   cacheID: virtual area number
+    # #   xStart/yStart: Upper-left of virtual area
+    # #   xEnd/yEnd: Lower-right of virtual area
+    # #   x/y: Screen paste point
+    # def Frame_AreaCopy(self, cacheID, xStart, yStart, xEnd, yEnd, x, y):
+    #     self.Byte(0x27)
+    #     self.Byte(0x80 | cacheID)
+    #     self.Word(xStart)
+    #     self.Word(yStart)
+    #     self.Word(xEnd)
+    #     self.Word(yEnd)
+    #     self.Word(x)
+    #     self.Word(y)
+    #     self.Send()
 
-	#  Write Picture Memory
-	#   Write the contents of the 32KB SRAM data memory into the designated image memory space
-	#   Issued: 0x5A, 0xA5, PIC_ID
-	#   Response: 0xA5 0x4F 0x4B
-	#
-	#   command 0x33
-	#   0x5A, 0xA5
-	#   PicId: Picture Memory location, 0x00-0x0F
-	#
-	#   Flash writing returns 0xA5 0x4F 0x4B
-	# def sendPicture(self, PicId, SRAM, Address, data):
-	# 	self.Byte(0x31)
-	# 	if SRAM:
-	# 		self.Byte(0x5A)
-	# 	else:
-	# 		self.Byte(0xA5)
-	# 	self.Word(Address)
-	# 	self.DWIN_SendBuf += data
-	# 	self.Send()
+    # def Frame_TitleCopy(self, id, x1, y1, x2, y2):
+    #     self.Frame_AreaCopy(id, x1, y1, x2, y2, 14, 8)
 
-	# --------------------------------------------------------------#
-	# --------------------------------------------------------------#
+    # #  Animate a series of icons
+    # #   animID: Animation ID; 0x00-0x0F
+    # #   animate: True on; False off;
+    # #   libID: Icon library ID
+    # #   picIDs: Icon starting ID
+    # #   picIDe: Icon ending ID
+    # #   x/y: Upper-left point
+    # #   interval: Display time interval, unit 10mS
+    # def ICON_Animation(self, animID, animate, libID, picIDs, picIDe, x, y, interval):
+    #     if x > self.DWIN_WIDTH - 1:
+    #         x = self.DWIN_WIDTH - 1
+    #     if y > self.DWIN_HEIGHT - 1:
+    #         y = self.DWIN_HEIGHT - 1
+    #     self.Byte(0x28)
+    #     self.Word(x)
+    #     self.Word(y)
+    #     # Bit 7: animation on or off
+    #     # Bit 6: start from begin or end
+    #     # Bit 5-4: unused (0)
+    #     # Bit 3-0: animID
+    #     self.Byte((animate * 0x80) | 0x40 | animID)
+    #     self.Byte(libID)
+    #     self.Byte(picIDs)
+    #     self.Byte(picIDe)
+    #     self.Byte(interval)
+    #     self.Send()
+
+    # #  Animation Control
+    # #   state: 16 bits, each bit is the state of an animation id
+    # def ICON_AnimationControl(self, state):
+    #     self.Byte(0x28)
+    #     self.Word(state)
+    #     self.Send()
+
+    # /*---------------------------------------- Memory functions ----------------------------------------*/
+    #  The LCD has an additional 32KB SRAM and 16KB Flash
+
+    #  Data can be written to the sram and save to one of the jpeg page files
+
+    #  Write Data Memory
+    #   command 0x31
+    #   Type: Write memory selection; 0x5A=SRAM; 0xA5=Flash
+    #   Address: Write data memory address; 0x000-0x7FFF for SRAM; 0x000-0x3FFF for Flash
+    #   Data: data
+    #
+    #   Flash writing returns 0xA5 0x4F 0x4B
+
+    #  Read Data Memory
+    #   command 0x32
+    #   Type: Read memory selection; 0x5A=SRAM; 0xA5=Flash
+    #   Address: Read data memory address; 0x000-0x7FFF for SRAM; 0x000-0x3FFF for Flash
+    #   Length: leangth of data to read; 0x01-0xF0
+    #
+    #   Response:
+    #     Type, Address, Length, Data
+
+    #  Write Picture Memory
+    #   Write the contents of the 32KB SRAM data memory into the designated image memory space
+    #   Issued: 0x5A, 0xA5, PIC_ID
+    #   Response: 0xA5 0x4F 0x4B
+    #
+    #   command 0x33
+    #   0x5A, 0xA5
+    #   PicId: Picture Memory location, 0x00-0x0F
+    #
+    #   Flash writing returns 0xA5 0x4F 0x4B
+    # def sendPicture(self, PicId, SRAM, Address, data):
+    #   self.Byte(0x31)
+    #   if SRAM:
+    #       self.Byte(0x5A)
+    #   else:
+    #       self.Byte(0xA5)
+    #   self.Word(Address)
+    #   self.DWIN_SendBuf += data
+    #   self.Send()
