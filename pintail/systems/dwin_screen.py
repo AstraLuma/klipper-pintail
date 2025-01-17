@@ -37,6 +37,11 @@ def RGB(*args):
     return (r << 10) | (g << 5) | b
 
 
+def _p(pos):
+    x,y = pos
+    return int(x), int(y)
+
+
 class Commands(enum.IntEnum):
     #: ping/pong
     HANDSHAKE = 0x00
@@ -235,7 +240,7 @@ class T5UIC1_LCD:
             pos: Position (x,y) of each point to draw
             size: width,height, each 0x01-0x0F
         """
-        self._send(Commands.DRAW_POINT, 'H2B' + '2H'*len(pos), color, *size, *(c for p in pos for c in p))
+        self._send(Commands.DRAW_POINT, 'H2B' + '2H'*len(pos), color, *size, *(c for p in pos for c in _p(p)))
 
     def draw_line(self, color: int, start: tuple[int, int], end: tuple[int, int]):
         """
@@ -246,7 +251,7 @@ class T5UIC1_LCD:
             start: x,y of starting point
             end: x,y of ending point
         """
-        self._send(Commands.DRAW_LINE, 'H2H2H', color, *start, *end)
+        self._send(Commands.DRAW_LINE, 'H2H2H', color, *_p(start), *_p(end))
 
     def draw_rect(self, mode:RectMode, color: int, start: tuple[int, int], end: tuple[int, int]):
         """
@@ -260,7 +265,7 @@ class T5UIC1_LCD:
             start: x,y of starting point
             end: x,y of ending point    
         """
-        self._send(Commands.DRAW_RECT, 'BH2H2H', mode, color, *start, *end)        
+        self._send(Commands.DRAW_RECT, 'BH2H2H', mode, color, *_p(start), *_p(end))        
 
     # Can't confirm
     def move_area(self, mode:int, dir:int, distance:int, color:int, start:tuple[int,int], end:tuple[int,int]):
@@ -277,7 +282,7 @@ class T5UIC1_LCD:
             start: x,y of one corner of rectangle
             end: x,y of the other corner
         """
-        self._send(Commands.MOVE_REGION, 'BHH2H2H', (mode << 7) | dir, distance, color, *start, *end)
+        self._send(Commands.MOVE_REGION, 'BHH2H2H', (mode << 7) | dir, distance, color, *_p(start), *_p(end))
 
     def draw_text(self, pos:tuple[int,int], font:Font, text:str, *, fg_color:int, bg_color: Union[int,None], monospace:bool):
         """
@@ -299,7 +304,7 @@ class T5UIC1_LCD:
             (monospace << 7) | ((bg_color is not None) << 6) | (font & 0b1111),
             fg_color,
             bg_color or 0,
-            *pos,
+            *_p(pos),
             btext,
         )
 
@@ -362,7 +367,7 @@ class T5UIC1_LCD:
             bg_color or 0,
             wholedigits,
             trailingdigits,
-            *pos,
+            *_p(pos),
             inum
         )
 
@@ -391,7 +396,7 @@ class T5UIC1_LCD:
 
         NOTE: Only library 9 seems to be present 
         """
-        self._send(Commands.DRAW_ICON, '2HBB', *pos, 0x80 | lib_id, icon_id)
+        self._send(Commands.DRAW_ICON, '2HBB', *_p(pos), 0x80 | lib_id, icon_id)
 
     def draw_qr(self, pos:tuple[int,int], size:int, data:bytes):
         """
@@ -404,7 +409,7 @@ class T5UIC1_LCD:
         """
         assert 0x1 <= size <= 0xF
         assert len(data) <= 154
-        self._send(Commands.DRAW_QR_CODE, f"2HB{len(data)}s", *pos, size, data)
+        self._send(Commands.DRAW_QR_CODE, f"2HB{len(data)}s", *_p(pos), size, data)
 
 
     # Astra: I don't feel like dealing with framebuffer stuff yet
