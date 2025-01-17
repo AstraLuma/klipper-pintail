@@ -2,15 +2,14 @@ import logging
 
 import ppb
 
+from .systems.exiting import Signals
 from .systems.moonraker import Moonraker
-
-
-class FillerScene(ppb.Scene):
-	...
+from .systems.render import DwinRender
+from .wait_for_moonraker import DisconnectedScene
 
 
 def run():
-	logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
 
-	with ppb.GameEngine(FillerScene, systems=[Moonraker], time_step=1.0) as eng:
-		eng.run()
+    with ppb.GameEngine(DisconnectedScene, systems=[Signals, Moonraker, DwinRender], time_step=1.0) as eng:
+        eng.run()

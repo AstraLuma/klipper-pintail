@@ -7,3 +7,9 @@ class MoonrakerNotification:
 	"""
 	name: str
 	params: list
+
+@dataclass
+class UiDirtied:
+	"""
+	Something in the UI changed; rerender
+	"""
