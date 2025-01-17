@@ -2,14 +2,12 @@ from typing import Callable
 from typing import Iterator
 from typing import Sequence
 
-from ppb.camera import Camera
 from ppb.gomlib import GameObject
 
 
 class Scene(GameObject):
     # Background color, in RGB, each channel is 0-255
     background_color: Sequence[int] = (0, 0, 100)
-    camera_class = Camera
     show_cursor = True
 
     def __init__(self, *, set_up: Callable = None, **props):
@@ -17,20 +15,6 @@ class Scene(GameObject):
 
         if set_up is not None:
             set_up(self)
-
-    @property
-    def main_camera(self) -> Camera:
-        try:
-            camera = next(self.children.get(tag="main_camera"))
-        except StopIteration:
-            camera = None
-        return camera
-
-    @main_camera.setter
-    def main_camera(self, value: Camera):
-        for camera in self.children.get(tag="main_camera"):
-            self.children.remove(camera)
-        self.children.add(value, tags=["main_camera"])
 
     def sprite_layers(self) -> Iterator:
         """

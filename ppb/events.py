@@ -32,12 +32,6 @@ from typing import Union
 
 __all__ = (
     'AssetLoaded',
-    'ButtonPressed',
-    'ButtonReleased',
-    'KeyPressed',
-    'KeyReleased',
-    'MouseMotion',
-    'PlaySound',
     'PreRender',
     'Quit',
     'Render',
@@ -55,40 +49,7 @@ __all__ = (
 # Remember to define scene at the end so the pargs version of __init__() still works
 
 from ppb.scenes import Scene
-from ppb.buttons import MouseButton
-from ppb.keycodes import KeyCode
-from ppb_vector import Vector
 import ppb
-
-
-@dataclass
-class ButtonPressed:
-    """
-    A mouse button was pressed.
-
-    The button is a :class:`~ppb.buttons.MouseButton` instance.
-
-    This represents the button in the active state. For acting when a button
-    is released see :class:`ButtonReleased`.
-    """
-    button: MouseButton
-    position: Vector  # Scene position
-    scene: Scene = None
-
-
-@dataclass
-class ButtonReleased:
-    """
-    A mouse button was released.
-
-    The button is a :class:`~ppb.buttons.MouseButton` instance.
-
-    This represents the button in the inactive state. For acting when a button
-    is clicked see :class:`ButtonPressed`.
-    """
-    button: MouseButton  #: A mouse button: Primary, Secondary, or Tertiary
-    position: Vector  #: The game-world position of the event.
-    scene: Scene = None  #: The currently running scene.
 
 
 @dataclass
@@ -115,49 +76,6 @@ class StartScene:
     """
     new_scene: Union[Scene, Type[Scene]]  #: A :class:`~ppb.scenes.Scene` class or instance
     kwargs: Dict[str, Any] = None  #: Keyword arguments to be passed to a scene type.
-    scene: Scene = None  #: The currently running scene.
-
-
-@dataclass
-class KeyPressed:
-    """
-    A keyboard key was pressed.
-
-    The buttons are defined in :mod:`ppb.keycodes`.
-
-    This represents the key entering an active state, to respond to when a key
-    is released see :class:`KeyReleased`.
-    """
-    key: KeyCode  #: A :class:`~ppb.keycodes.KeyCode` flag.
-    mods: Set[KeyCode]  #: A set of :class:`KeyCodes <ppb.keycodes.KeyCode>`
-    scene: Scene = None  #: The currently running scene
-
-
-@dataclass
-class KeyReleased:
-    """
-    A keyboard key was released.
-
-    The buttons are defined in :mod:`ppb.keycodes`.
-
-    This represents the key entering an inactive state, to respond to when a key
-    is pressed see :class:`KeyPressed`.
-    """
-    key: KeyCode  #: A :class:`~ppb.keycodes.KeyCode` flag.
-    mods: Set[KeyCode]  #: A set of :class:`KeyCodes <ppb.keycodes.KeyCode>`
-    scene: Scene = None  #: The currently running scene
-
-
-@dataclass
-class MouseMotion:
-    """
-    The mouse moved.
-
-    If something should be tracking the mouse, this is the event to listen to.
-    """
-    position: Vector  #: The game-world location of the mouse cursor.
-    delta: Vector  #: The change in position since the last :class:`MouseMotion` event.
-    buttons: Collection[MouseButton]  #: The state of the mouse buttons.
     scene: Scene = None  #: The currently running scene.
 
 
@@ -341,20 +259,6 @@ class Update:
     """
     time_delta: float  #: Seconds since last Update
     scene: Scene = None  #: The currently running scene.
-
-
-@dataclass
-class PlaySound:
-    """
-    An object requested a sound be played.
-
-    Signal in an event handler to have a sound played.
-
-    Example: ::
-
-       signal(PlaySound(my_sound))
-    """
-    sound: 'ppb.assetlib.Asset'  #: A :class:`~ppb.systems.sound.Sound` asset.
 
 
 @dataclass
