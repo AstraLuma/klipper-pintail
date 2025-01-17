@@ -2,6 +2,7 @@ import ppb
 from ppb.utils import get_time
 
 from .dwin_screen import T5UIC1_LCD
+from .. import events
 
 
 class PostRender: pass
@@ -31,7 +32,7 @@ class DwinRender(ppb.systemslib.System):
     def on_ui_dirtied(self, event, signal):
         self.redraw = True
 
-    def on_screne_started(self, event, signal):
+    def on_scene_started(self, event, signal):
         self.redraw = True
 
     def on_scene_continued(self, event, signal):
@@ -42,7 +43,7 @@ class DwinRender(ppb.systemslib.System):
         if self.redraw:
             # Do a render
             signal(ppb.events.PreRender(t - self.last_draw))
-            signal(ppb.events.Render())
+            signal(events.Render(screen=self.screen))
             signal(PostRender())
             self.last_draw = t
 
