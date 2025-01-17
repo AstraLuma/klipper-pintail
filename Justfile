@@ -4,7 +4,7 @@
 
 # Push and run a command
 run *CMD:
-	rsync -av ./ ender.local:pintail/
+	rsync -av --delete ./ ender.local:pintail/
 	ssh ender.local cd pintail \; {{CMD}}
 
 # Push and run a python script
@@ -13,5 +13,5 @@ run *CMD:
 
 # Sync and open a repl
 repl:
-	rsync -av ./ ender.local:pintail/
+	rsync -av --delete ./ ender.local:pintail/
 	ssh ender.local -t cd pintail \; python3
