@@ -27,7 +27,7 @@ class Drawable:
         signal(events.UiDirtied())
 
 
-class UIScene(Drawable, ppb.Scene):
+class Scene(Drawable, ppb.Scene):
     def on_scene_continued(self, event, signal):
         self.set_dirty(signal)
 
@@ -39,5 +39,5 @@ class UIScene(Drawable, ppb.Scene):
                 # FIXME: We probably don't need a UIDirtied event for every element
 
 
-class UISprite(Drawable, ppb.Sprite):
+class Sprite(Drawable, ppb.Sprite):
     pass

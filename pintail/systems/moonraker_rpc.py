@@ -99,9 +99,9 @@ class MoonrakerUDS:
             "id": reqid,
         }
         if pargs:
-            body['params'] = pargs
+            req['params'] = pargs
         elif kwargs:
-            body['params'] = kwargs
+            req['params'] = kwargs
         else:
             pass
 

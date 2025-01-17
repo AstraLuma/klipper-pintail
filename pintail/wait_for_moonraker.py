@@ -1,9 +1,9 @@
 import ppb
 
-from .ui import UIScene
+from . import ui
 
 
-class DisconnectedScene(UIScene):
+class DisconnectedScene(ui.Scene):
     next: type[ppb.Scene]
 
     def redraw(self, screen):
@@ -16,6 +16,6 @@ class DisconnectedScene(UIScene):
         )
 
     # FIXME: Implement proper connection status handling.
-    # def on_idle(self, event, signal):
-    #     if hasattr(event, "moonraker"):
-    #         signal(ppb.events.ReplaceScene(self.next))
+    def on_idle(self, event, signal):
+        if hasattr(event, "moonraker"):
+            signal(ppb.events.ReplaceScene(self.next))

@@ -1,12 +1,15 @@
 """
 PPB system for calling moonraker
 """
+import logging
 import queue
 
 import ppb
 
 from .moonraker_rpc import MoonrakerUDS
 from ..events import MoonrakerNotification
+
+LOG = logging.getLogger(__name__)
 
 class Moonraker(ppb.systemslib.System):
     rpc: MoonrakerUDS
@@ -21,6 +24,14 @@ class Moonraker(ppb.systemslib.System):
 
     def __enter__(self):
         self.rpc = MoonrakerUDS("/home/astraluma/printer_data/comms/moonraker.sock")
+        LOG.info("Connected to moonraker")
+        self.rpc(
+            "server.connection.identify",
+            client_name="pintail",
+            version="0",
+            type="display",
+            url="https://github.com/AstraLuma/klipper-pintail/",
+        )
 
     def __exit__(self, *exc):
         self.rpc.close()

@@ -4,11 +4,16 @@ https://github.com/ihrapsa/T5UIC1-DWIN-toolset/
 import enum
 import functools
 import time
+import logging
 import math
 import re
 import serial
 import struct
 from typing import overload, Union
+
+
+LOG = logging.getLogger(__name__)
+
 
 @overload
 def RGB(hex: int) -> int: ...
@@ -135,10 +140,10 @@ class T5UIC1_LCD:
             usart: serial port to connect to
         """
         self.port = serial.Serial(usart, 115200, timeout=1)
-        print("\nDWIN handshake ")
+        LOG.debug("Port opened")
         while not self.handshake():
             pass
-        print("DWIN OK.")
+        LOG.info("Screen handshake completed")
         # self.JPG_ShowAndCache(0)
         self.set_direction(1)
         self.commit()
@@ -179,13 +184,14 @@ class T5UIC1_LCD:
         recv_cmd, recv_data = self._read_one()
         return recv_cmd == 0x00 and recv_data == b"OK"
 
-    # Can't confirm
     def set_brightness(self, value: int):
         """
         Set the brightness of the backlight
 
         Args:
             value: 0-0xFF, 0 is off, values <0x20 may cause flicker
+
+        NOTE: No noticable difference in various brightnesses, but on/off works.
         """
         self._send(Commands.BACKLIGHT_BRIGHTNESS_ADJUSTMENT, "B", value)
 
