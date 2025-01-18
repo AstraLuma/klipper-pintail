@@ -1,7 +1,7 @@
 import ppb
 from ppb import Vector as V
 
-from . import ui, uibits, netinfo
+from . import ui, uibits, netinfo, netscene
 
 
 class IconButton(ui.Sprite):
@@ -60,13 +60,19 @@ class NetworkBar(ui.Sprite):
         text_width = len(text) * font.x
         text_x = (self.width - text_width) / 2
 
-        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.bg_color), self.top_left, self.bottom_right)
+        bg = self.focus_color if self.has_focus else self.bg_color
+
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(bg), self.top_left, self.bottom_right)
         screen.draw_text(
             V(self.left+text_x, self.top), font, text, 
             fg_color=screen.RGB(self.fg_color),
             bg_color=None,
             monospace=True,
         )
+
+    def on_knob_press(self, event, signal):
+        if self.has_focus:
+            signal(ppb.events.StartScene(netscene.NetScene))
 
 
 class MainMenuScene(ui.Scene):
@@ -80,7 +86,10 @@ class MainMenuScene(ui.Scene):
             activate=self.on_settings_clicked,
         ))
 
-        self.children.add(NetworkBar(bg_color=0x6666FF, fg_color=0x000000))
+        self.children.add(NetworkBar(
+            bg_color=0x3333FF, focus_color=0x6666FF,
+            fg_color=0x000000, knobindex=2,
+        ))
 
 
     def redraw(self, screen):
