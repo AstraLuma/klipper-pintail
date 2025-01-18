@@ -34,7 +34,7 @@ def RGB(*args):
     r = (r >> 3) & 0b11111
     g = (g >> 2) & 0b111111
     b = (b >> 3) & 0b11111
-    return (r << 10) | (g << 5) | b
+    return (r << 11) | (g << 5) | b
 
 
 def _p(pos):
