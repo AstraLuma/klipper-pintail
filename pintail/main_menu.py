@@ -11,7 +11,7 @@ class IconButton(ui.Sprite):
         return (110 - len(self.text) * font.x) / 2
 
     def redraw(self, screen):
-        screen.draw_icon(self.top_left, 9, self.icon)
+        screen.draw_icon(self.top_left, 9, self.icon + int(self.has_focus))
         if self.text:
             font = screen.Font.EIGHT_X_SIXTEEN
             screen.draw_text(
@@ -23,8 +23,8 @@ class IconButton(ui.Sprite):
 
 class MainMenuScene(ui.Scene):
     def on_scene_started(self, event, signal):
-        self.children.add(IconButton(position=V(20, 100), icon=1, text="Print"))
-        self.children.add(IconButton(position=V(150, 100), icon=5, text="Settings"))
+        self.children.add(IconButton(position=V(20, 100), icon=1, text="Print", knobindex=0))
+        self.children.add(IconButton(position=V(150, 100), icon=5, text="Settings", knobindex=1))
 
     def redraw(self, screen):
         screen.clear_screen(screen.RGB(0x000000))

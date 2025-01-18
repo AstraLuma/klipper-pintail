@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import enum
 import typing
 
 
@@ -28,10 +29,18 @@ class KnobPress:
 class KnobRelease:
     pass
 
+class Direction(enum.IntEnum):
+    CW = +1
+    CCW = -1
+
 @dataclass
-class KnobCw:
+class KnobTurn:
+    direction: Direction
+
+@dataclass
+class Focus:
     pass
 
 @dataclass
-class KnobCcw:
+class Blur:
     pass

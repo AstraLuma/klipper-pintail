@@ -28,6 +28,7 @@ class Drawable:
 
 
 class Scene(Drawable, ppb.Scene):
+    current_focus = None
     def on_scene_continued(self, event, signal):
         self.set_dirty(signal)
 
@@ -38,6 +39,38 @@ class Scene(Drawable, ppb.Scene):
                 c.set_dirty(signal)
                 # FIXME: We probably don't need a UIDirtied event for every element
 
+    def on_knob_turn(self, event, signal):
+        controls = sorted(
+            (c for c in self.children.get(kind=Sprite) if hasattr(c, 'knobindex')),
+            key=lambda o: o.knobindex,
+        )
+        old = self.current_focus
+        if old is None:
+            new = controls[0]
+        else:
+            try:
+                idx = controls.index(old)
+            except ValueError:
+                # Terrible, but better than nothing
+                # FIXME: do better
+                new = controls[0]
+            else:
+                new = controls[(idx + int(event.direction)) % len(controls)]
+
+        if old is not None:
+            signal(events.Blur(), targets=[old])
+        signal(events.Focus(), targets=[new])
+        self.current_focus = new
+
 
 class Sprite(Drawable, ppb.Sprite):
-    pass
+    knobindex: int
+    has_focus: bool = False
+
+    def on_focus(self, event, signal):
+        self.has_focus = True
+        self.set_dirty(signal)
+
+    def on_blur(self, event, signal):
+        self.has_focus = False
+        self.set_dirty(signal)

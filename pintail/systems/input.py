@@ -29,14 +29,10 @@ class Input(ppb.systemslib.System):
     def on_idle(self, event, signal):
         for dev in self.devices:
             for ev in iter(dev.read_one, None):
-                print(ev)
                 if ev.type == ecodes.EV_KEY and ev.code == ecodes.BTN_0:
                     if ev.value:
                         signal(events.KnobPress())
                     else:
                         signal(events.KnobRelease())
                 elif ev.type == ecodes.EV_REL and ev.code == ecodes.REL_X:
-                    if ev.value > 0:
-                        signal(events.KnobCw())
-                    elif ev.value < 0:
-                        signal(events.KnobCcw())
+                    signal(events.KnobTurn(direction=events.Direction(ev.value)))
