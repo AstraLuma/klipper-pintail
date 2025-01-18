@@ -18,12 +18,20 @@ class UiDirtied:
 
 @dataclass
 class Render:
-    """
-    The :class:`~ppb.systems.Renderer` is rendering.
-
-    .. warning::
-       In general, responses to :class:`Render` will not be reflected until the next
-       render pass. If you want changes to effect this frame, see
-       :class:`PreRender`
-    """
     screen: typing.Any
+
+@dataclass
+class KnobPress:
+    pass
+
+@dataclass
+class KnobRelease:
+    pass
+
+@dataclass
+class KnobCw:
+    pass
+
+@dataclass
+class KnobCcw:
+    pass
