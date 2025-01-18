@@ -1,6 +1,7 @@
+import ppb
 from ppb import Vector as V
 
-from . import ui
+from . import ui, uibits
 
 
 class IconButton(ui.Sprite):
@@ -23,8 +24,21 @@ class IconButton(ui.Sprite):
 
 class MainMenuScene(ui.Scene):
     def on_scene_started(self, event, signal):
-        self.children.add(IconButton(position=V(20, 100), icon=1, text="Print", knobindex=0))
-        self.children.add(IconButton(position=V(150, 100), icon=5, text="Settings", knobindex=1))
+        self.children.add(IconButton(
+            position=V(20, 100), icon=1, text="Print", knobindex=0,
+            on_knob_press=self.on_print_clicked,
+        ))
+        self.children.add(IconButton(
+            position=V(150, 100), icon=5, text="Settings", knobindex=1,
+            on_knob_press=self.on_settings_clicked,
+        ))
 
     def redraw(self, screen):
+        print(bin(screen.RGB(0xF0F0F0)))
         screen.clear_screen(screen.RGB(0x000000))
+
+    def on_print_clicked(self, event, signal):
+        signal(ppb.events.StartScene(uibits.PopupMsg(text="Do a print")))
+
+    def on_settings_clicked(self, event, signal):
+        signal(ppb.events.StartScene(uibits.PopupMsg(text="Change settings")))

@@ -46,20 +46,27 @@ class Scene(Drawable, ppb.Scene):
         )
         old = self.current_focus
         if old is None:
-            new = controls[0]
+            if controls:
+                new = controls[0]
+            else:
+                new = None
         else:
             try:
                 idx = controls.index(old)
             except ValueError:
                 # Terrible, but better than nothing
                 # FIXME: do better
-                new = controls[0]
+                if controls:
+                    new = controls[0]
+                else:
+                    new = None
             else:
                 new = controls[(idx + int(event.direction)) % len(controls)]
 
         if old is not None:
             signal(events.Blur(), targets=[old])
-        signal(events.Focus(), targets=[new])
+        if new is not None:
+            signal(events.Focus(), targets=[new])
         self.current_focus = new
 
 
