@@ -54,4 +54,4 @@ class NetScene(ui.Scene):
         )
 
     def on_knob_press(self, event, signal):
-        signal(ppb.events.StopScene)
+        signal(ppb.events.StopScene())
