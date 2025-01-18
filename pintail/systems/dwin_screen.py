@@ -11,6 +11,8 @@ import serial
 import struct
 from typing import overload, Union
 
+import ppb
+
 
 LOG = logging.getLogger(__name__)
 
@@ -38,7 +40,12 @@ def RGB(*args):
 
 
 def _p(pos):
-    x,y = pos
+    if isinstance(pos, ppb.Vector):
+        # Do axis conversion
+        x, y = pos
+        y = 480 - y
+    else:
+        x, y = pos
     return int(x), int(y)
 
 

@@ -70,7 +70,7 @@ class Scene(Drawable, ppb.Scene):
         self.current_focus = new
 
 
-class Sprite(Drawable, ppb.Sprite):
+class Sprite(Drawable, ppb.RectangleSprite):
     knobindex: int
     has_focus: bool = False
 
