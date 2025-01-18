@@ -5,6 +5,7 @@ from . import ui, uibits, netinfo
 
 
 class IconButton(ui.Sprite):
+    __dirty_fields__ = 'icon', 'text'
     icon: int
     text: str
 
@@ -35,6 +36,8 @@ class IconButton(ui.Sprite):
 
 
 class NetworkBar(ui.Sprite):
+    __dirty_fields__ = 'fg_color', 'bg_color', 'font', 'ipaddr'
+
     bg_color: int = 0x000000
     fg_color: int = 0xFFFFFF
     font = (10, 20)
@@ -44,10 +47,7 @@ class NetworkBar(ui.Sprite):
         self.ipaddr = netinfo.get_default_address()
 
     def on_update(self, event, signal):
-        oldip = self.ipaddr
         self.ipaddr = netinfo.get_default_address()
-        if self.ipaddr != oldip:
-            self.set_dirty(signal)
 
     def redraw(self, screen):
         font = screen.Font.s(*self.font)

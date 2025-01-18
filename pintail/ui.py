@@ -10,6 +10,9 @@ from . import events
 
 class Drawable:
     is_dirty: bool = True
+    __dirty_fields__ = None
+
+    __dirty_hash = None
 
     def on_render(self, event, signal):
         if self.is_dirty:
@@ -25,6 +28,15 @@ class Drawable:
         """
         self.is_dirty = True
         signal(events.UiDirtied())
+
+    def on_idle(self, event, signal):
+        if self.__dirty_fields__ is None:
+            return
+        dirties = tuple(getattr(self, fname, None) for fname in self.__dirty_fields__)
+        dhash = hash(dirties)
+        if dhash != self.__dirty_hash:
+            self.set_dirty(signal)
+            self.__dirty_hash = dhash
 
 
 class Scene(Drawable, ppb.Scene):
