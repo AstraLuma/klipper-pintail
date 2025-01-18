@@ -163,7 +163,11 @@ class T5UIC1_LCD:
             fields: arguments to pack into the data
         """
         buff = bytearray(self.PACKET_HEAD)
-        buff += struct.pack('>B'+fmt, cmd, *fields)
+        try:
+            buff += struct.pack('>B'+fmt, cmd, *fields)
+        except struct.error as exc:
+            print(f"{'>B'+fmt} {[cmd, *fields]!r}")
+            raise
         # Optional CRC32 goes here, if firmware >=v2.3
         buff += self.PACKET_TAIL
         self.port.write(buff)
