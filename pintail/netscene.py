@@ -5,22 +5,31 @@ from . import ui, uibits, netinfo
 
 
 class NetScene(ui.Scene):
-    __dirty_fields__ = 'ipaddr', 'hostname'
-    ipaddr = None
+    __dirty_fields__ = 'mainaddr', 'hostname', 'alladdrs'
+    mainaddr = None
     hostname = None
+    alladdrs = None
 
     def on_scene_started(self, event, signal):
-        self.ipaddr = netinfo.get_default_address()
+        self.mainaddr = netinfo.get_default_address()
         self.hostname = netinfo.hostname()
+        self.alladdrs = frozenset(inter.ip for inter in netinfo.iter_all_interfaces() if inter.version == 4)
 
     def on_update(self, event, signal):
-        self.ipaddr = netinfo.get_default_address()
+        self.mainaddr = netinfo.get_default_address()
         self.hostname = netinfo.hostname()
+        self.alladdrs = frozenset(inter.ip for inter in netinfo.iter_all_interfaces() if inter.version == 4)
 
     def redraw(self, screen):
+        additional_addrs = sorted(self.alladdrs - {self.mainaddr})
+        all_urls = [
+            f"http://{self.hostname}/",
+            ip_url := f"http://{self.mainaddr}/",
+            *(f"http://{ip!s}/" for ip in additional_addrs)
+        ]
+
         font = screen.Font.TWELVE_X_TWENTYFOUR
-        ip_url = f"http://{self.ipaddr}/"
-        name_url = f"http://{self.hostname}/"
+
         screen.clear_screen(screen.RGB(0x000000))
 
         qr_size = 4
@@ -33,25 +42,20 @@ class NetScene(ui.Scene):
 
         screen.draw_qr(V(qr_left, qr_top), 4, ip_url.encode('utf-8'))
 
-        text = str(ip_url)
-        text_width = len(text) * font.x
-        text_x = (screen.width - text_width) / 2
-        screen.draw_text(
-            V(text_x, ip_line_top), font, text, 
-            fg_color=screen.RGB(0xFFFF),
-            bg_color=None,
-            monospace=True,
-        )
+        text_y = qr_top - qr_pixels
+        for text in all_urls:
+            text_width = len(text) * font.x
+            text_x = (screen.width - text_width) / 2
+            screen.draw_text(
+                V(text_x, text_y), font, text, 
+                fg_color=screen.RGB(0xFFFF),
+                bg_color=None,
+                monospace=True,
+            )
+            text_y -= font.y
+            if text_y <= 0:
+                break
 
-        text = str(name_url)
-        text_width = len(text) * font.x
-        text_x = (screen.width - text_width) / 2
-        screen.draw_text(
-            V(text_x, name_line_top), font, text, 
-            fg_color=screen.RGB(0xFFFF),
-            bg_color=None,
-            monospace=True,
-        )
 
     def on_knob_press(self, event, signal):
         signal(ppb.events.StopScene())
