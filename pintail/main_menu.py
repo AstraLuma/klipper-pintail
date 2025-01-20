@@ -78,17 +78,25 @@ class NetworkBar(ui.Sprite):
 class MainMenuScene(ui.Scene):
     def on_scene_started(self, event, signal):
         self.children.add(IconButton(
-            position=V(65, 250), icon=1, text="Print", knobindex=0,
+            position=V(65, 325), icon=1, text="Print", knobindex=0,
             activate=self.on_print_clicked,
         ))
         self.children.add(IconButton(            
-            position=V(195, 250), icon=5, text="Settings", knobindex=1,
+            position=V(195, 325), icon=3, text="Prepare", knobindex=1,
             activate=self.on_settings_clicked,
+        ))
+        self.children.add(IconButton(            
+            position=V(65, 175), icon=5, text="Settings", knobindex=2,
+            # activate=self.on_settings_clicked,
+        ))
+        self.children.add(IconButton(            
+            position=V(195, 175), icon=7, text="Levelling", knobindex=3,
+            # activate=self.on_settings_clicked,
         ))
 
         self.children.add(NetworkBar(
             bg_color=0x3333FF, focus_color=0x6666FF,
-            fg_color=0x000000, knobindex=2,
+            fg_color=0x000000, knobindex=4,
         ))
 
 
