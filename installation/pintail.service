@@ -1,0 +1,16 @@
+# systemd service file for pintail
+[Unit]
+Description=Pintail Display
+Requires=moonraker.service
+Wants=udev.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+User=astraluma
+EnvironmentFile=/home/astraluma/printer_data/systemd/pintail.env
+ExecStart=/home/astraluma/pintail-env/bin/python $PINTAIL_ARGS
+Restart=always
+RestartSec=10
