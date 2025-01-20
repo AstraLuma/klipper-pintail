@@ -146,12 +146,12 @@ class T5UIC1_LCD:
     Font = Font
     RGB = staticmethod(RGB)
 
-    def __init__(self, usart: str):
+    def __init__(self, usart: str, exclusive=True):
         """
         Args:
             usart: serial port to connect to
         """
-        self.port = serial.Serial(usart, 115200, timeout=1)
+        self.port = serial.Serial(usart, 115200, timeout=1, exclusive=exclusive)
         LOG.debug("Port opened")
         while not self.handshake():
             pass
