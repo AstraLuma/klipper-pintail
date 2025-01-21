@@ -178,10 +178,25 @@ class T5UIC1_LCD:
         # Optional CRC32 goes here, if firmware >=v2.3
         buff += self.PACKET_TAIL
         self.port.write(buff)
+        if flush:
+            self._flush()
         # This was in the original implementation; not sure why
         #time.sleep(0.001)
-        if flush:
-            self.port.flush()
+
+    def _flush(self):
+        # Work around for https://github.com/pyserial/pyserial/issues/785
+        import errno
+        import termios
+        while True:
+            try:
+                self.port.flush()
+            except termios.error as exc:
+                if exc.args[0] == errno.EINTR:
+                    continue
+                else:
+                    raise
+            else:
+                return
 
     def _read_one(self) -> tuple[int, bytes]:
         """

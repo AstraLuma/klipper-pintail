@@ -14,7 +14,6 @@ class Updater(System):
 
     def __enter__(self):
         self.last_tick = ppb.get_time()
-        signal.siginterrupt(signal.SIGALRM, False)
         signal.signal(signal.SIGALRM, self._on_sigalrm)
         signal.setitimer(signal.ITIMER_REAL, self.time_step, self.time_step)
 
