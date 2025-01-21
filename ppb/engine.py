@@ -5,7 +5,6 @@ the event loop, the Idle event, and other aspects.
 
 import time
 from collections import defaultdict
-from collections import deque
 from contextlib import ExitStack
 from itertools import chain
 from typing import Any
@@ -17,6 +16,7 @@ from typing import Iterator
 from typing import List
 from typing import Type
 from typing import Union
+import queue
 import weakref
 
 import ppb
@@ -264,7 +264,7 @@ class GameEngine(GameObject, LoggingMixin):
         self.kwargs = kwargs
 
         # Engine State
-        self.events = deque()
+        self.eventqueue = queue.SimpleQueue()
         self.event_extensions: DefaultDict[Union[Type, _ellipsis], List[Callable[[Any], None]]] = defaultdict(list)
         self.entered = False
         self.running = False
@@ -362,17 +362,38 @@ class GameEngine(GameObject, LoggingMixin):
         if not self.entered:
             raise ValueError("Cannot run before things have started",
                              self.entered)
+        # Wait for an event
+        event = self.eventqueue.get(block=True, timeout=None)
+        self.publish(event)
+
+        # Handle all the spawned events
+        self._publish_events()
+
+        # We've done the event that woke us, do an Idle
         now = get_time()
         self.signal(events.Idle(now - self._last_idle_time))
         self._last_idle_time = now
-        while self.events:
-            self.publish()
+        # We loop through signal for targets handling
 
-    def publish(self):
+        # And handle all the events that spawned from the idle
+        self._publish_events()
+
+    def _publish_events(self):
+        """
+        Publishes the contents of the eventqueue
+        """
+        while True:
+            try:
+                event = self.eventqueue.get(block=False)
+            except queue.Empty:
+                break
+            else:
+                self.publish(event)
+
+    def publish(self, event):
         """
         Publish the next event to every object in the tree.
         """
-        event = self.events.popleft()
         scene = self.current_scene
         event.scene = scene
         extensions = chain(self.event_extensions[type(event)], self.event_extensions[...])
@@ -421,7 +442,19 @@ class GameEngine(GameObject, LoggingMixin):
             event.__targets__ = weakref.WeakSet(targets)
         else:
             event.__targets__ = None
-        self.events.append(event)
+        self.eventqueue.put(event)
+    
+    def _signal_now(self, event, *, targets=None):
+        """
+        As signal, but publishes immediately, skipping the queue.
+
+        Does not handle spawned events
+        """
+        if targets is not None:
+            event.__targets__ = weakref.WeakSet(targets)
+        else:
+            event.__targets__ = None
+        self.publish(event)
 
     def _flush_events(self):
         """
@@ -430,7 +463,7 @@ class GameEngine(GameObject, LoggingMixin):
         Call before doing anything that will cause signals to be delivered to
         the wrong scene.
         """
-        self.events = deque()
+        self.eventqueue = queue.SimpleQueue()
 
     def on_start_scene(self, event: events.StartScene, signal: Callable[[Any], None]):
         """
@@ -478,15 +511,16 @@ class GameEngine(GameObject, LoggingMixin):
         """Pause the current scene."""
         # Empty the queue before changing scenes.
         self._flush_events()
-        self.signal(events.ScenePaused())
-        self.publish()
+        self._signal_now(events.ScenePaused())
+        self._publish_events()
 
     def _stop_scene(self):
         """Stop the current scene."""
         # Empty the queue before changing scenes.
         self._flush_events()
-        self.signal(events.SceneStopped())
-        self.publish()
+        # We need this to be distributed before the scene popping has happened
+        self._signal_now(events.SceneStopped())
+        self._publish_events()
         self.children.pop_scene()
 
     def _start_scene(self, scene, kwargs):
