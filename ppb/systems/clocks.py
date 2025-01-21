@@ -1,6 +1,7 @@
 """
 This module performs time keeping of subsystems 
 """
+import signal
 
 import ppb
 import ppb.events as events
@@ -8,23 +9,22 @@ from ppb.systemslib import System
 
 
 class Updater(System):
-
-    def __init__(self, time_step=0.016, **kwargs):
-        self.accumulated_time = 0
-        self.last_tick = None
-        self.start_time = None
-        self.time_step = time_step
+    time_step = 0.016
+    last_tick = None
 
     def __enter__(self):
-        self.start_time = ppb.get_time()
+        self.last_tick = ppb.get_time()
+        signal.signal(signal.SIGALRM, self._on_sigalrm)
+        signal.setitimer(signal.ITIMER_REAL, self.time_step, self.time_step)
 
-    def on_idle(self, idle_event: events.Idle, signal):
+    def __exit__(self, *exc):
+        signal.setitimer(signal.ITIMER_REAL, 0, 0)
+        signal.signal(signal.SIGALRM, signal.SIG_DFL)
+
+    def _on_sigalrm(self, signum, frame):
+        # Let's just assume that ITIMER is accurate
         if self.last_tick is None:
             self.last_tick = ppb.get_time()
         this_tick = ppb.get_time()
-        self.accumulated_time += this_tick - self.last_tick
+        self.engine.signal(events.Update(this_tick - self.last_tick))
         self.last_tick = this_tick
-        while self.accumulated_time >= self.time_step:
-            # This might need to change for the Idle event system to signal _only_ once per idle event.
-            self.accumulated_time += -self.time_step
-            signal(events.Update(self.time_step))
