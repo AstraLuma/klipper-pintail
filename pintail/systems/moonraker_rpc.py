@@ -43,12 +43,16 @@ class MoonrakerUDS:
     _future_results: dict[int, concurrent.futures.Future]
     events: queue.SimpleQueue
 
-    def __init__(self, path):
+    on_notification = staticmethod(lambda ev: None)
+
+    def __init__(self, path, on_notification=None):
         self._id_generator = itertools.count()
+        self._future_results = dict()
+        if on_notification is not None:
+            self.on_notification = on_notification
+
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._socket.connect(path)
-        self._future_results = dict()
-        self.events = queue.SimpleQueue()
         self._thread = threading.Thread(None, self._read_thread, name=f"moonraker-reader:{path}", daemon=True)
         self._thread.start()
 
@@ -85,7 +89,7 @@ class MoonrakerUDS:
                 self._future_results[msg["id"]].set_result(msg)
             else:
                 # Broadcast event
-                self.events.put(Event(msg["method"], msg.get("params", [])))
+                self.on_notification(Event(msg["method"], msg.get("params", [])))
 
     def __call__(self, method: str, /, *pargs, **kwargs):
         """

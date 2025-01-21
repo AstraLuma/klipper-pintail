@@ -23,7 +23,10 @@ class Moonraker(ppb.systemslib.System):
             event.moonraker = self.rpc
 
     def __enter__(self):
-        self.rpc = MoonrakerUDS("/home/astraluma/printer_data/comms/moonraker.sock")
+        self.rpc = MoonrakerUDS(
+            "/home/astraluma/printer_data/comms/moonraker.sock",
+            on_notification=self._moonraker_notification,
+        )
         LOG.info("Connected to moonraker")
         self.rpc(
             "server.connection.identify",
@@ -36,12 +39,5 @@ class Moonraker(ppb.systemslib.System):
     def __exit__(self, *exc):
         self.rpc.close()
 
-    def on_idle(self, event, signal):
-        # Pump notifications
-        while True:
-            try:
-                msg = self.rpc.events.get_nowait()
-            except queue.Empty:
-                break
-            else:
-                signal(MoonrakerNotification(name=msg.name, params=msg.params))
+    def _moonraker_notification(self, msg):
+        self.engine.signal(MoonrakerNotification(name=msg.name, params=msg.params))
