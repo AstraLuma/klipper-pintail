@@ -5,6 +5,14 @@ from . import ui
 from . import events
 
 
+# The background of the little 24x24 icons
+ICON_BG = 0x0B_0B_0B
+# Background of the ~100x100 buttons when in the default state
+BTN_NORMAL_BG = 0x15_1F_21
+# Background of large buttons when focused
+BTN_FOCUS_BG = 0x2D_35_37
+
+
 class PopupMsg(ui.Scene):
     __dirty_fields__ = "text", "font", "border", "padding", "border_color", "bg_color", "text_color"
 

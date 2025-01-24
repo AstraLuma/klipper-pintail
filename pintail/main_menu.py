@@ -39,6 +39,7 @@ class NetworkBar(ui.Sprite):
     __dirty_fields__ = 'fg_color', 'bg_color', 'font', 'ipaddr'
 
     bg_color: int = 0x000000
+    focus_color: int = 0x0000FF
     fg_color: int = 0xFFFFFF
     font = (10, 20)
 
@@ -82,21 +83,21 @@ class MainMenuScene(ui.Scene):
             activate=self.on_print_clicked,
         ))
         self.children.add(IconButton(            
-            position=V(195, 325), icon=3, text="Prepare", knobindex=1,
+            position=V(195, 325), icon=7, text="Prepare", knobindex=1,
             activate=self.on_settings_clicked,
         ))
         self.children.add(IconButton(            
-            position=V(65, 175), icon=5, text="Settings", knobindex=2,
+            position=V(65, 175), icon=3, text="Calibrate", knobindex=2,
             # activate=self.on_settings_clicked,
         ))
         self.children.add(IconButton(            
-            position=V(195, 175), icon=7, text="Levelling", knobindex=3,
+            position=V(195, 175), icon=5, text="Admin", knobindex=3,
             # activate=self.on_settings_clicked,
         ))
 
         self.children.add(NetworkBar(
-            bg_color=0x3333FF, focus_color=0x6666FF,
-            fg_color=0x000000, knobindex=4,
+            bg_color=uibits.BTN_NORMAL_BG, focus_color=uibits.BTN_FOCUS_BG,
+            fg_color=0xFFFFFF, knobindex=4,
         ))
 
 

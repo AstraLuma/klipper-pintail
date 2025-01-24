@@ -133,7 +133,12 @@ class Font(enum.IntEnum):
         """
         Get font by dimensions
         """
-        return cls(_font_lookup[x, y])
+        if x is ...:
+            raise NotImplementedError
+        elif y is ...:
+            raise NotImplementedError
+        else:
+            return cls(_font_lookup[x, y])
 
 class T5UIC1_LCD:
     PACKET_HEAD = b"\xAA"
