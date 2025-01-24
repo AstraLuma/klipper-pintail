@@ -29,6 +29,14 @@ class DwinRender(ppb.systemslib.System):
             self.screen.set_brightness(0)
             self.screen.commit()
 
+    def on_display_on(self, event, signal):
+        self.screen.set_brightness(0xFF)
+        self.screen.commit()
+
+    def on_display_off(self, event, signal):
+        self.screen.set_brightness(0)
+        self.screen.commit()
+
     def on_ui_dirtied(self, event, signal):
         self.redraw = True
 

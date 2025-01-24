@@ -44,3 +44,13 @@ class Focus:
 @dataclass
 class Blur:
     pass
+
+
+@dataclass
+class DisplayOff:
+    pass
+
+
+@dataclass
+class DisplayOn:
+    pass
