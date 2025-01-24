@@ -8,7 +8,7 @@ from .systems.render import DwinRender
 from .systems.input import Input
 from .wait_for_moonraker import DisconnectedScene
 from .main_menu import MainMenuScene
-from .uibits import OffScene
+from .off_scene import OffScene
 
 
 def run():
