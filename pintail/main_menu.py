@@ -1,7 +1,7 @@
 import ppb
 from ppb import Vector as V
 
-from . import ui, uibits, netinfo, netscene
+from . import ui, uibits, netinfo, netscene, prepare_menu, imdata
 
 
 class IconButton(ui.Sprite):
@@ -9,15 +9,28 @@ class IconButton(ui.Sprite):
     icon: int
     text: str
 
-    def __init__(self, **props):
-        super().__init__(width=110, height=100, **props)
+    border_color = 0xFF_FF_FF
+    bg_color = 0x00_00_00
+
+    @property
+    def width(self):
+        return imdata.ICONS[self.icon].width + 4
+
+    @property
+    def height(self):
+        return imdata.ICONS[self.icon].height + 4
 
     def _offset(self, font):
         text_width = len(self.text) * font.x
         return (self.width - text_width) / 2
 
     def redraw(self, screen):
-        screen.draw_icon(self.top_left, 9, self.icon + int(self.has_focus))
+        screen.draw_rect(
+            screen.RectMode.OUTLINE, 
+            screen.RGB(self.border_color if self.has_focus else self.bg_color), 
+            self.top_left, self.bottom_right,
+        )
+        screen.draw_icon(self.top_left + V(2, -2), 9, self.icon + int(self.has_focus))
         if self.text:
             font = screen.Font.EIGHT_X_SIXTEEN
             screen.draw_text(
@@ -84,7 +97,7 @@ class MainMenuScene(ui.Scene):
         ))
         self.children.add(IconButton(            
             position=V(195, 325), icon=7, text="Prepare", knobindex=1,
-            activate=self.on_settings_clicked,
+            activate=self.on_prepare_clicked,
         ))
         self.children.add(IconButton(            
             position=V(65, 175), icon=3, text="Calibrate", knobindex=2,
@@ -96,7 +109,7 @@ class MainMenuScene(ui.Scene):
         ))
 
         self.children.add(NetworkBar(
-            bg_color=uibits.BTN_NORMAL_BG, focus_color=uibits.BTN_FOCUS_BG,
+            bg_color=imdata.BTN_NORMAL_BG, focus_color=imdata.BTN_FOCUS_BG,
             fg_color=0xFFFFFF, knobindex=4,
         ))
 
@@ -107,5 +120,5 @@ class MainMenuScene(ui.Scene):
     def on_print_clicked(self, event, signal):
         signal(ppb.events.StartScene(uibits.PopupMsg(text="Do a print")))
 
-    def on_settings_clicked(self, event, signal):
-        signal(ppb.events.StartScene(uibits.PopupMsg(text="Change settings")))
+    def on_prepare_clicked(self, event, signal):
+        signal(ppb.events.StartScene(prepare_menu.PrepareMenu()))
