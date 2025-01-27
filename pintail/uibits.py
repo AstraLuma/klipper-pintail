@@ -1,9 +1,100 @@
+import dataclasses
+
 import ppb
 from ppb import Vector as V
 
 from . import ui
 from . import events
 
+
+@dataclasses.dataclass
+class BorderRect:
+    """
+    Utility to calculate the drawing elements of a box that has a sized border,
+    a sized padding, and contents.
+    """
+    border_tl: ppb.Vector
+    border_br: ppb.Vector
+
+    padding_tl: ppb.Vector
+    padding_br: ppb.Vector
+
+    content_tl: ppb.Vector
+    content_br: ppb.Vector
+
+    @classmethod
+    def from_content_tl(cls, top_left: ppb.Vector, content_size: tuple[int, int], border: int, padding: int):
+        """
+        Calculate, given the top left coordinate and size of the contents
+        """
+        border_tl = top_left
+        padding_tl = border_tl + V(border, -border)
+        content_tl = padding_tl + V(padding, -padding)
+
+        content_br = content_tl + V(content_size[0], -content_size[1])
+        padding_br = content_br + V(padding, -padding)
+        border_br = padding_br + V(border, -border)
+
+        # TODO: Limit to screen bounds
+        return cls(
+            border_tl=border_tl,
+            border_br=border_br,
+            padding_tl=padding_tl,
+            padding_br=padding_br,
+            content_tl=content_tl,
+            content_br=content_br,
+        )
+
+    @classmethod
+    def from_content_pos(cls, pos: ppb.Vector, content_size: tuple[int, int], border: int, padding: int):
+        """
+        Calculate, given the center coordinate and size of the contents
+        """
+        content_extent = V(content_size[0], -content_size[1])
+        content_tl = pos - content_extent / 2
+        content_br = pos + content_extent / 2
+
+        padding_tl = content_tl + V(-padding, padding)
+        padding_br = content_br + V(padding, -padding)
+
+        border_tl = padding_tl + V(-border, border)
+        border_br = padding_br + V(border, -border)
+
+        # TODO: Limit to screen bounds
+        return cls(
+            border_tl=border_tl,
+            border_br=border_br,
+            padding_tl=padding_tl,
+            padding_br=padding_br,
+            content_tl=content_tl,
+            content_br=content_br,
+        )
+
+    @classmethod
+    def from_sprite(cls, sprite: ppb.Sprite, border: int, padding: int):
+        """
+        Calculate, given a sprite with position, width, and height describing
+        the outer bounds
+        """
+        border_tl = sprite.top_left
+        border_br = sprite.bottom_right
+
+        padding_tl = border_tl + V(border, -border)
+        padding_br = border_br + V(-border, border)
+
+        content_tl = padding_tl + V(padding, -padding)
+        content_br = padding_br + V(-padding, padding)
+
+        # TODO: Limit to screen bounds
+        return cls(
+            border_tl=border_tl,
+            border_br=border_br,
+            padding_tl=padding_tl,
+            padding_br=padding_br,
+            content_tl=content_tl,
+            content_br=content_br,
+        )
+    
 
 class PopupMsg(ui.Scene):
     __dirty_fields__ = "text", "font", "border", "padding", "border_color", "bg_color", "text_color"
@@ -18,21 +109,17 @@ class PopupMsg(ui.Scene):
 
     def redraw(self, screen):
         font = screen.Font.s(*self.font)
-        text_extent = V(len(self.text) * font.x, -font.y)
-        text_ul = (V(screen.width, screen.height) - text_extent) / 2
-        if text_ul.x < (self.border + self.padding):
-            text_ul = text_ul.update(x=self.border + self.padding)
+        rect = BorderRect.from_content_pos(
+            pos=V(screen.width, screen.height)/2,
+            content_size=(len(self.text) * font.x, font.y),
+            border=self.border,
+            padding=self.padding,
+        )
 
-        padding_ul = text_ul + V(-self.padding, self.padding)
-        padding_lr = text_ul + text_extent + V(self.padding, -self.padding)
-
-        border_ul = padding_ul + V(-self.border, self.border)
-        border_lr = padding_lr + V(self.border, -self.border)
-
-        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.border_color), border_ul, border_lr)
-        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.bg_color), padding_ul, padding_lr)
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.border_color), rect.border_tl, rect.border_br)
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.bg_color), rect.padding_tl, rect.padding_br)
         screen.draw_text(
-            text_ul, font, self.text, 
+            rect.content_tl, font, self.text, 
             fg_color=screen.RGB(self.text_color),
             bg_color=screen.RGB(self.bg_color),
             monospace=True,
@@ -76,23 +163,17 @@ class IconedMenuItem(ui.Sprite):
     def redraw(self, screen):
         font = screen.Font.s(*self.font)
 
-        border_ul = self.top_left
-        border_lr = self.bottom_right
+        rect = BorderRect.from_sprite(self, border=self.border, padding=self.padding)
 
-        padding_ul = border_ul + V(self.border, -self.border)
-        padding_lr = border_lr + V(-self.border, self.border)
+        icon_tl = rect.content_tl
+        text_tl = icon_tl + V(self.icon_size + self.icon_padding, 0)
 
-        icon_ul = padding_ul + V(self.padding, -self.padding)
-        text_ul = icon_ul + V(self.icon_size + self.icon_padding, 0)
-
-        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.border_color), border_ul, border_lr)
-        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.bg_color), padding_ul, padding_lr)
-        screen.draw_icon(icon_ul, 9, self.icon)
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.border_color), rect.border_tl, rect.border_br)
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(self.bg_color), rect.padding_tl, padding_br)
+        screen.draw_icon(icon_tl, 9, self.icon)
         screen.draw_text(
-            text_ul, font, self.text, 
+            text_tl, font, self.text, 
             fg_color=screen.RGB(self.text_color),
             bg_color=screen.RGB(self.bg_color),
             monospace=True,
         )
-
-
