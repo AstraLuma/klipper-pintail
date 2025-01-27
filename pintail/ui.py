@@ -42,6 +42,7 @@ class Drawable:
 class Scene(Drawable, ppb.Scene):
     current_focus = None
     def on_scene_continued(self, event, signal):
+        self.clear_focus(signal)
         self.set_dirty(signal)
 
     def set_dirty(self, signal):
@@ -80,6 +81,14 @@ class Scene(Drawable, ppb.Scene):
         if new is not None:
             signal(events.Focus(), targets=[new])
         self.current_focus = new
+
+    def clear_focus(self, signal):
+        """
+        Blur everything
+        """
+        if self.current_focus is not None:
+            signal(events.Blur(), targets=[self.current_focus])
+            self.current_focus = None
 
 
 class Sprite(Drawable, ppb.RectangleSprite):

@@ -85,4 +85,5 @@ class GlobalSceneChanges(ppb.systemslib.System):
             self._start_off_scene()
 
     def _start_off_scene(self):
-        self.engine.signal(ppb.events.StartScene(self.off_scene(printer_device=self.printer_device)))
+        if not isinstance(self.engine.current_scene, self.off_scene):
+            self.engine.signal(ppb.events.StartScene(self.off_scene(printer_device=self.printer_device)))

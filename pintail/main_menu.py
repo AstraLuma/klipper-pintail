@@ -89,7 +89,53 @@ class NetworkBar(ui.Sprite):
             signal(ppb.events.StartScene(netscene.NetScene))
 
 
+class PowerButton(ui.Sprite):
+    padding_color: int = 0x00_00_00
+    border_color: int = 0xFF_FF_FF
+
+    bg_color: int = 0xFF_00_00
+    text_color: int = 0x00_00_00
+
+    focus_bg_color: int = 0xFF_7F_7F
+    focus_text_color: int = 0x00_00_00
+
+    border: int = 1
+    padding: int = 0
+
+    font = (10, 20)
+
+    text: str = "Power Off"
+
+    printer_device: str = "printer"  # FIXME: Get from engine kwargs
+
+    def redraw(self, screen):
+        font = screen.Font.s(*self.font)
+        rect = uibits.BorderRect.from_sprite(self, border=self.border, padding=self.padding)
+        text_tl, _ = rect.center_real_content((len(self.text) * font.x, font.y))
+
+        border_color = self.border_color if self.has_focus else self.padding_color
+        padding_color = self.padding_color
+        content_color = self.focus_bg_color if self.has_focus else self.bg_color
+        text_color = self.focus_text_color if self.has_focus else self.text_color
+
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(border_color), rect.border_tl, rect.border_br)
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(padding_color), rect.padding_tl, rect.padding_br)
+        screen.draw_rect(screen.RectMode.FILLED, screen.RGB(content_color), rect.content_tl, rect.content_br)
+        screen.draw_text(
+            text_tl, font, self.text, 
+            fg_color=screen.RGB(text_color),
+            bg_color=None,
+            monospace=True,
+        )
+
+    def on_knob_press(self, event, signal):
+        if self.has_focus:
+            resp = event.moonraker("machine.device_power.post_device", device=self.printer_device, action="off")
+            assert resp[self.printer_device] == "off"
+
+
 class MainMenuScene(ui.Scene):
+    bg_color: int = 0x00_00_00
     def on_scene_started(self, event, signal):
         self.children.add(IconButton(
             position=V(65, 325), icon=1, text="Print", knobindex=0,
@@ -108,14 +154,18 @@ class MainMenuScene(ui.Scene):
             # activate=self.on_settings_clicked,
         ))
 
-        self.children.add(NetworkBar(
-            bg_color=imdata.BTN_NORMAL_BG, focus_color=imdata.BTN_FOCUS_BG,
-            fg_color=0xFFFFFF, knobindex=4,
+        self.children.add(PowerButton(
+            position=V(136, 50), width=200, height=40,
+            padding_color=self.bg_color, knobindex=4,
         ))
 
+        self.children.add(NetworkBar(
+            bg_color=imdata.BTN_NORMAL_BG, focus_color=imdata.BTN_FOCUS_BG,
+            fg_color=0xFFFFFF, knobindex=5,
+        ))
 
     def redraw(self, screen):
-        screen.clear_screen(screen.RGB(0x000000))
+        screen.clear_screen(screen.RGB(self.bg_color))
 
     def on_print_clicked(self, event, signal):
         signal(ppb.events.StartScene(uibits.PopupMsg(text="Do a print")))

@@ -22,6 +22,18 @@ class BorderRect:
     content_tl: ppb.Vector
     content_br: ppb.Vector
 
+    def center_real_content(self, content_size: tuple[int, int]) -> tuple[ppb.Vector, ppb.Vector]:
+        """
+        In cases where the real content needs to be centered in a fixed rect,
+        calculate the real top left and bottom right of that content
+        """
+        center = self.content_tl + (self.content_br - self.content_tl) / 2
+        extent = V(content_size[0], -content_size[1])
+        return (
+            center - extent / 2,
+            center + extent / 2,
+        )
+
     @classmethod
     def from_content_tl(cls, top_left: ppb.Vector, content_size: tuple[int, int], border: int, padding: int):
         """

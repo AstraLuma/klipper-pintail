@@ -2,6 +2,7 @@ import ppb
 from ppb import Vector as V
 
 from . import ui, uibits, events
+from .systems.moonraker_rpc import RPCError
 
 
 class OffScene(uibits.PopupMsg):
@@ -47,6 +48,17 @@ class OffScene(uibits.PopupMsg):
                 # Position B
                 # Powered off, shutdown is coming
                 pass
+
+    def on_update(self, event, signal):
+        # We sometimes get into weird states, mostly when the user clicks excessively.
+        # This is a fallback.
+        try:
+            status = event.moonraker("machine.device_power.get_device", device=self.printer_device)
+            klippy = event.moonraker("printer.info")
+        except RPCError:
+            return
+        if status[self.printer_device]  == "on" and klippy["state"]  == "ready":
+            signal(ppb.events.StopScene())
 
     def on_moonraker_notification(self, event, signal):
         attr_name = f"_on_{event.name}"
